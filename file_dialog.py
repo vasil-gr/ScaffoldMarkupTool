@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QApplication, QDialog, QPushButton, QFileDialog, QLineEdit, QMessageBox, QVBoxLayout, QLabel, QHBoxLayout, QToolBar, QMenu
-from PyQt6.QtGui import QIcon, QColor, QPalette, QCursor, QPixmap
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon, QColor, QPalette, QCursor, QPixmap, QMouseEvent, QPainter
+from PyQt6.QtCore import Qt, QEvent
 import sys
 import os
 
@@ -111,9 +111,9 @@ class ImageWindow(QDialog):
         super().__init__()
         self.setWindowTitle("ScaffoldMarkupTool")
         self.setWindowIcon(QIcon("./icon2.png"))  
-        pixmap = QPixmap(file_path)
+        self.pixmap = QPixmap(file_path)
 
-        self.resize(pixmap.width(), pixmap.height())
+        self.resize(self.pixmap.width(), self.pixmap.height())
 
         # Сохранение текущих размеров окна
         self.normal_size = self.size()
@@ -275,13 +275,83 @@ class ImageWindow(QDialog):
         """)
 
         # Отображение изображения
-        image_label = QLabel(self)
-        image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        image_label.setPixmap(pixmap)
-        image_label.setScaledContents(False)
-        layout.addWidget(image_label)
+        self.image_label = QLabel(self)
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setPixmap(self.pixmap)
+        self.image_label.setScaledContents(False)
+        layout.addWidget(self.image_label)
 
         self.setLayout(layout)
+
+        # фильтр событий на QLabel
+        self.image_label.installEventFilter(self)
+
+        # список для хранения координат точек
+        self.points = []
+    
+   
+
+    # Обработка наведения мыши на изображение
+    def eventFilter(self, obj, event):
+        if obj == self.image_label:
+            if event.type() == QEvent.Type.Enter:
+                self.image_label.setCursor(Qt.CursorShape.CrossCursor)  # курсор "цель"
+            elif event.type() == QEvent.Type.Leave:
+                self.image_label.setCursor(Qt.CursorShape.ArrowCursor)
+        return super().eventFilter(obj, event)
+
+
+    # Обработка кликов мыши по изображению
+    def mousePressEvent(self, event: QMouseEvent):
+        click_pos = event.position()
+        widget_pos = self.image_label.mapFromParent(click_pos.toPoint())
+
+        if 0 <= widget_pos.x() < self.pixmap.width() and 0 <= widget_pos.y() < self.pixmap.height():
+            if event.modifiers() == Qt.KeyboardModifier.ShiftModifier:  # удаление точки: клик+Shift
+                self.remove_dot(widget_pos)
+            else:  # добавление точки: клик
+                self.points.append((widget_pos.x(), widget_pos.y()))
+                print(f"Добавлена точка: ({widget_pos.x()}, {widget_pos.y()})")
+                self.add_dot()
+        else:
+            print("Клик вне изображения.")
+
+    
+    # Добавление точки и обновление изображения
+    def add_dot(self):
+        pixmap_with_points = self.pixmap.copy()
+        painter = QPainter(pixmap_with_points)
+        painter.setPen(Qt.GlobalColor.red)
+        painter.setBrush(Qt.GlobalColor.red)
+
+        for point in self.points:
+            painter.drawEllipse(point[0] - 3, point[1] - 3, 6, 6)  # потом сделать возможность менять радиус и цвет точек
+
+        painter.end()
+        self.image_label.setPixmap(pixmap_with_points)
+    
+
+    # Удаление точки и обновление изображения
+    def remove_dot(self, click_pos):
+        removal_radius = 10  # поиск точки для удаления производится в определённом радиусе вокруг точки нажатия; потом можно добавить возможность менять этот радиус
+        nearest_point = None
+        min_distance = float('inf')
+
+        # удаляет ближайшую
+        for point in self.points:
+            distance = ((point[0] - click_pos.x()) ** 2 + (point[1] - click_pos.y()) ** 2) ** 0.5
+            if distance < removal_radius and distance < min_distance:
+                nearest_point = point
+                min_distance = distance
+
+        if nearest_point:
+            self.points.remove(nearest_point)
+            print(f"Удалена точка: {nearest_point}")
+            self.add_dot()
+        else:
+            print("Нет точки в области клика для удаления.")
+
+
 
     # Полноэкранный режим
     def toggle_fullscreen(self):
@@ -295,6 +365,7 @@ class ImageWindow(QDialog):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+
     dlgMain = DlgMain()
     dlgMain.show()
     sys.exit(app.exec())
