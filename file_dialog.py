@@ -135,8 +135,14 @@ class ImageWindow(QDialog):
         # Кнопка "File" с выпадающим списком
         file_menu = QMenu("File", self)
         file_menu.addAction("New")
-        file_menu.addAction("Duplicate layer")
-        file_menu.addAction("Export")
+        file_menu.addAction("Open project")
+        # подменю сохранения
+        save_menu = QMenu("Save", self)
+        save_menu.addAction("Markup image (png)")
+        save_menu.addAction("Markup only (png)")
+        save_menu.addAction("List of points (txt)")
+        save_menu.addAction("Project")
+        file_menu.addMenu(save_menu)
         file_menu.addAction("Exit")
 
         file_button = QPushButton("File", self)
