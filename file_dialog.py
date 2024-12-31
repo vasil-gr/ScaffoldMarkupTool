@@ -1,7 +1,7 @@
 import save_res
 
 from PyQt6.QtWidgets import QApplication, QDialog, QPushButton, QFileDialog, QLineEdit, QMessageBox, QVBoxLayout, QLabel, QHBoxLayout, QToolBar, QMenu
-from PyQt6.QtGui import QIcon, QColor, QPalette, QCursor, QPixmap, QMouseEvent, QPainter
+from PyQt6.QtGui import QIcon, QColor, QPalette, QCursor, QPixmap, QMouseEvent, QPainter, QAction
 from PyQt6.QtCore import Qt, QEvent
 import sys
 import os
@@ -141,8 +141,10 @@ class ImageWindow(QDialog):
 
         # Кнопка "File" с выпадающим списком
         file_menu = QMenu("File", self)
-        file_menu.addAction("New")
         file_menu.addAction("Open project").triggered.connect(self.open_project)
+        duplicate_action = QAction("Duplicate layer", self)
+        duplicate_action.triggered.connect(self.duplicate_layer)
+        file_menu.addAction(duplicate_action)
         # подменю сохранения
         save_menu = QMenu("Save", self)
 
@@ -169,9 +171,8 @@ class ImageWindow(QDialog):
 
         # Кнопка "Markup" с выпадающим списком
         markup_menu = QMenu("Markup", self)
-        markup_menu.addAction("Normalise coordinates")
-        markup_menu.addAction("Set dot")
-        markup_menu.addAction("Remove dot")
+        markup_menu.addAction("Set dot       LMB")
+        markup_menu.addAction("Remove dot    Shift+LMB")
 
         markup_button = QPushButton("Markup", self)
         markup_button.setMenu(markup_menu)
@@ -310,8 +311,6 @@ class ImageWindow(QDialog):
 
         # список для хранения координат точек
         self.points = []
-    
-
 
     # Обработка наведения мыши на изображение
     def eventFilter(self, obj, event):
@@ -321,7 +320,6 @@ class ImageWindow(QDialog):
             elif event.type() == QEvent.Type.Leave:
                 self.image_label.setCursor(Qt.CursorShape.ArrowCursor)
         return super().eventFilter(obj, event)
-
 
     # Обработка кликов мыши по изображению
     def mousePressEvent(self, event: QMouseEvent):
@@ -338,7 +336,6 @@ class ImageWindow(QDialog):
         else:
             print("Click is outside of image.")
 
-    
     # Добавление точки и обновление изображения
     def add_dot(self):
         pixmap_with_points = self.pixmap.copy()
@@ -352,7 +349,6 @@ class ImageWindow(QDialog):
         painter.end()
         self.image_label.setPixmap(pixmap_with_points)
     
-
     # Удаление точки и обновление изображения
     def remove_dot(self, click_pos):
         removal_radius = 10  # поиск точки для удаления производится в определённом радиусе вокруг точки нажатия; потом можно добавить возможность менять этот радиус
@@ -372,8 +368,6 @@ class ImageWindow(QDialog):
             self.add_dot()
         else:
             print("There isn't dot in the click area to removed.")
-
-
 
     # Полноэкранный режим
     def toggle_fullscreen(self):
@@ -435,6 +429,18 @@ class ImageWindow(QDialog):
                 print(f"Error opening project: {e}")
         else:
             print("Project is not selected or incorrect file format.")
+
+    # Создание нового окна для дублированного изображения
+    def duplicate_layer(self):
+        duplicate_window = DuplicatedImageWindow(self.pixmap)
+        duplicate_window.exec()
+
+class DuplicatedImageWindow(ImageWindow):
+    def __init__(self, pixmap):
+        super().__init__("")
+        self.setWindowTitle("Duplicated Layer")
+        self.image_label.setPixmap(pixmap)
+        self.resize(pixmap.width(), pixmap.height()) 
 
 
 
