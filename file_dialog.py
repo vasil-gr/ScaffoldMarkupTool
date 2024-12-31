@@ -1,8 +1,13 @@
+import save_res
+
 from PyQt6.QtWidgets import QApplication, QDialog, QPushButton, QFileDialog, QLineEdit, QMessageBox, QVBoxLayout, QLabel, QHBoxLayout, QToolBar, QMenu
 from PyQt6.QtGui import QIcon, QColor, QPalette, QCursor, QPixmap, QMouseEvent, QPainter
 from PyQt6.QtCore import Qt, QEvent
 import sys
 import os
+import json
+import zipfile
+from datetime import datetime
 
 class DlgMain(QDialog):
     def __init__(self):
@@ -112,6 +117,8 @@ class ImageWindow(QDialog):
         self.setWindowTitle("ScaffoldMarkupTool")
         self.setWindowIcon(QIcon("./icon2.png"))  
         self.pixmap = QPixmap(file_path)
+        self.folder_path = os.path.dirname(file_path) # директория файла (понадобится при сохранении)
+        self.file_name = os.path.splitext(os.path.basename(file_path))[0] # имя файла (понадобится при сохранении)
 
         self.resize(self.pixmap.width(), self.pixmap.height())
 
@@ -135,13 +142,22 @@ class ImageWindow(QDialog):
         # Кнопка "File" с выпадающим списком
         file_menu = QMenu("File", self)
         file_menu.addAction("New")
-        file_menu.addAction("Open project")
+        file_menu.addAction("Open project").triggered.connect(self.open_project)
         # подменю сохранения
         save_menu = QMenu("Save", self)
-        save_menu.addAction("Markup image (png)")
-        save_menu.addAction("Markup only (png)")
-        save_menu.addAction("List of points (txt)")
-        save_menu.addAction("Project")
+
+        save_menu.addAction("Markup image (png)").triggered.connect(
+            lambda: save_res.save_markup_image(self.folder_path, self.file_name, self.pixmap)
+        )
+        save_menu.addAction("Markup only (png)").triggered.connect(
+            lambda: save_res.save_markup_only(self.folder_path, self.file_name, self.pixmap, self.points)
+        )
+        save_menu.addAction("Points (json)").triggered.connect(
+            lambda: save_res.save_points(self.folder_path, self.file_name, self.pixmap, self.points)
+        )
+        save_menu.addAction("Project (zip)").triggered.connect(
+            lambda: save_res.save_project(self.folder_path, self.file_name, self.pixmap, self.points)
+        )
         file_menu.addMenu(save_menu)
         file_menu.addAction("Exit")
 
@@ -295,7 +311,7 @@ class ImageWindow(QDialog):
         # список для хранения координат точек
         self.points = []
     
-   
+
 
     # Обработка наведения мыши на изображение
     def eventFilter(self, obj, event):
@@ -317,10 +333,10 @@ class ImageWindow(QDialog):
                 self.remove_dot(widget_pos)
             else:  # добавление точки: клик
                 self.points.append((widget_pos.x(), widget_pos.y()))
-                print(f"Добавлена точка: ({widget_pos.x()}, {widget_pos.y()})")
+                print(f"Added dot: ({widget_pos.x()}, {widget_pos.y()})")
                 self.add_dot()
         else:
-            print("Клик вне изображения.")
+            print("Click is outside of image.")
 
     
     # Добавление точки и обновление изображения
@@ -352,10 +368,10 @@ class ImageWindow(QDialog):
 
         if nearest_point:
             self.points.remove(nearest_point)
-            print(f"Удалена точка: {nearest_point}")
+            print(f"Removed dot: {nearest_point}")
             self.add_dot()
         else:
-            print("Нет точки в области клика для удаления.")
+            print("There isn't dot in the click area to removed.")
 
 
 
@@ -368,6 +384,59 @@ class ImageWindow(QDialog):
             screen_geometry = QApplication.primaryScreen().availableGeometry()
             self.setGeometry(screen_geometry)
             self.showFullScreen()
+    
+
+    # Открытие проекта
+    def open_project(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Open Project", "", "ZIP Files (*.zip)")
+
+        if file_path and file_path.lower().endswith('.zip'):
+            try:
+                temp_folder = os.path.join(os.path.dirname(file_path), "temp_project")
+                os.makedirs(temp_folder, exist_ok=True)
+
+                with zipfile.ZipFile(file_path, 'r') as zipf:
+                    zipf.extractall(temp_folder)
+
+                image_path = os.path.join(temp_folder, "image.png")
+                metadata_path = os.path.join(temp_folder, "metadata.json")
+
+                # проверка наличия файлов
+                if not os.path.exists(image_path) or not os.path.exists(metadata_path):
+                    print("Error: required files are missing in the project.")
+                    return
+
+                # выгрузка изображения
+                pixmap = QPixmap(image_path)
+
+                # выгрузка метаданных
+                with open(metadata_path, 'r', encoding='utf-8') as metafile:
+                    metadata = json.load(metafile)
+
+                points = [(point["x"], point["y"]) for point in metadata.get("points", [])]
+                file_name = os.path.splitext(os.path.basename(file_path))[0]
+
+                os.remove(image_path)
+                os.remove(metadata_path)
+                os.rmdir(temp_folder)
+
+                # новое окно с проектом
+                project_window = ImageWindow(file_path)
+                project_window.pixmap = pixmap
+                project_window.points = points
+                project_window.file_name = file_name
+                project_window.folder_path = os.path.dirname(file_path)
+                project_window.add_dot()  # перерисовка с точками
+                project_window.exec()
+
+                print(f"Project was loaded from: {file_path}")
+
+            except Exception as e:
+                print(f"Error opening project: {e}")
+        else:
+            print("Project is not selected or incorrect file format.")
+
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
