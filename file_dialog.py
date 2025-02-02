@@ -1,13 +1,12 @@
 import save_res
 
-from PyQt6.QtWidgets import QApplication, QDialog, QPushButton, QFileDialog, QLineEdit, QMessageBox, QVBoxLayout, QLabel, QHBoxLayout, QToolBar, QMenu
 from PyQt6.QtGui import QIcon, QColor, QPalette, QCursor, QPixmap, QMouseEvent, QPainter, QAction
+from PyQt6.QtWidgets import QApplication, QDialog, QPushButton, QFileDialog, QLineEdit, QMessageBox, QVBoxLayout, QLabel, QHBoxLayout, QToolBar, QMenu, QScrollArea
 from PyQt6.QtCore import Qt, QEvent
 import sys
 import os
 import json
 import zipfile
-from datetime import datetime
 
 class DlgMain(QDialog):
     def __init__(self):
@@ -70,8 +69,8 @@ class DlgMain(QDialog):
         file_path = self.input_field.text()
         if os.path.isfile(file_path) and file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
             print(f"File path: {file_path}")
-            self.open_image_window(file_path)
             self.close()
+            self.open_image_window(file_path)
 
         else:
             msg_box = QMessageBox(self)
@@ -120,21 +119,35 @@ class ImageWindow(QDialog):
         self.folder_path = os.path.dirname(file_path) # директория файла (понадобится при сохранении)
         self.file_name = os.path.splitext(os.path.basename(file_path))[0] # имя файла (понадобится при сохранении)
 
-        self.resize(self.pixmap.width(), self.pixmap.height())
-
+        # Предельные размеры окна (не больше 0.8 от экрана)
+        screen_geometry = QApplication.primaryScreen().availableGeometry()
+        screen_width, screen_height = screen_geometry.width(), screen_geometry.height()
+        max_window_width = int(screen_width * 0.8)
+        max_window_height = int(screen_height * 0.8)
+        frame_width = 25  # рамки по высоте
+        frame_height = 60  # рамки по ширине
+        # Устанавливаем размер окна: по размеру изображения, если оно вместе с рамками меньше предельных размеров
+        window_width = min(self.pixmap.width() + frame_width, max_window_width)
+        window_height = min(self.pixmap.height() + frame_height, max_window_height)
+        self.resize(window_width, window_height)
         # Сохранение текущих размеров окна
         self.normal_size = self.size()
+
+        # Полосы прокрутки
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(False) # изображение сверху-слева
+        self.image_label = QLabel(self)
+        self.image_label.setPixmap(self.pixmap)
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.scroll_area.setWidget(self.image_label) # если изображение больше окна, появятся полосы прокрутки.
 
         # Изменение цвета фона
         palette = QPalette()
         palette.setColor(QPalette.ColorRole.Window, QColor(147, 201, 218))
         self.setPalette(palette)
 
-        layout = QVBoxLayout(self)
-
-        main_layout = QHBoxLayout()
-
         # ToolBar
+        main_layout = QHBoxLayout()
         toolbar = QToolBar("Toolbar", self)
         toolbar.setMovable(False)
         toolbar.setContentsMargins(0, 0, 0, 0)  
@@ -221,7 +234,14 @@ class ImageWindow(QDialog):
         button_layout.addWidget(self.close_button)
 
         main_layout.addLayout(button_layout)
-        layout.addLayout(main_layout)
+
+
+        # Устанавливаем компоновку
+        layout = QVBoxLayout(self)
+        layout.addLayout(main_layout) # тулбар (меню), вверху
+        layout.addWidget(self.scroll_area) # прокручиваемая область с изображением, снизу
+        self.setLayout(layout)
+
 
         # Стили кнопок
         self.setStyleSheet("""
@@ -297,14 +317,6 @@ class ImageWindow(QDialog):
 
         """)
 
-        # Отображение изображения
-        self.image_label = QLabel(self)
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setPixmap(self.pixmap)
-        self.image_label.setScaledContents(False)
-        layout.addWidget(self.image_label)
-
-        self.setLayout(layout)
 
         # фильтр событий на QLabel
         self.image_label.installEventFilter(self)
@@ -323,9 +335,15 @@ class ImageWindow(QDialog):
 
     # Обработка кликов мыши по изображению
     def mousePressEvent(self, event: QMouseEvent):
-        click_pos = event.position()
-        widget_pos = self.image_label.mapFromParent(click_pos.toPoint())
 
+        # Если клик вне изображения — не обрабатываем
+        if not self.image_label.underMouse():
+            return
+        
+        # Координаты клика внутри self.image_label
+        widget_pos = self.image_label.mapFromGlobal(event.globalPosition().toPoint())
+
+        # Проверяем, попал ли клик внутрь изображения
         if 0 <= widget_pos.x() < self.pixmap.width() and 0 <= widget_pos.y() < self.pixmap.height():
             if event.modifiers() == Qt.KeyboardModifier.ShiftModifier:  # удаление точки: клик+Shift
                 self.remove_dot(widget_pos)
