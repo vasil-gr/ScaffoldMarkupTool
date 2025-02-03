@@ -188,22 +188,22 @@ class ImageWindow(QDialog):
         file_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         toolbar.addWidget(file_button)
 
-        # Кнопка "Markup" с выпадающим списком
-        markup_menu = QMenu("Markup", self)
-        markup_menu.addAction("Set dot       LMB")
-        markup_menu.addAction("Remove dot    Shift+LMB")
+        # Кнопка "Edit" с выпадающим списком
+        edit_menu = QMenu("Edit", self)
+        edit_menu.addAction("Remove last dot").triggered.connect(self.remove_last_dot)
+        edit_menu.addAction("Restore last dot").triggered.connect(self.restore_last_dot)
 
-        markup_button = QPushButton("Markup", self)
-        markup_button.setMenu(markup_menu)
-        markup_button.setObjectName("Markup") 
-        markup_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        toolbar.addWidget(markup_button)
+        edit_button = QPushButton("Edit", self)
+        edit_button.setMenu(edit_menu)
+        edit_button.setObjectName("Edit") 
+        edit_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        toolbar.addWidget(edit_button)
 
         # Кнопка "Zoom" с выпадающим списком
         zoom_menu = QMenu("Zoom", self)
-        zoom_menu.addAction("Zoom In").triggered.connect(self.zoom_in)  
-        zoom_menu.addAction("Zoom Out").triggered.connect(self.zoom_out)
-        zoom_menu.addAction("Reset Zoom").triggered.connect(self.reset_zoom)
+        zoom_menu.addAction("Zoom in").triggered.connect(self.zoom_in)  
+        zoom_menu.addAction("Zoom out").triggered.connect(self.zoom_out)
+        zoom_menu.addAction("Reset zoom").triggered.connect(self.reset_zoom)
         # zoom_menu.addAction("Fit to Window")
 
         zoom_button = QPushButton("Zoom", self)
@@ -252,7 +252,7 @@ class ImageWindow(QDialog):
         # Стили кнопок
         self.setStyleSheet("""
             /* Стили для кнопок в ToolBar */
-            QPushButton#File, QPushButton#Markup, QPushButton#Zoom, QPushButton#Processing {
+            QPushButton#File, QPushButton#Edit, QPushButton#Zoom, QPushButton#Processing {
                 background-color:rgb(255, 87, 51);
                 border-radius: 5px;
                 font-weight: 600;
@@ -267,13 +267,13 @@ class ImageWindow(QDialog):
                 text-align: center
             }
 
-            QPushButton#Markup QPushButton#Processing{
+            QPushButton#Edit QPushButton#Processing{
                 width: 120px;
                 color: white;
                 text-align: center
             }            
 
-            QPushButton#File:hover, QPushButton#Markup:hover, QPushButton#Zoom:hover, QPushButton#Processing:hover {
+            QPushButton#File:hover, QPushButton#Edit:hover, QPushButton#Zoom:hover, QPushButton#Processing:hover {
                 background-color:rgb(211, 73, 42);
             }
 
@@ -329,6 +329,8 @@ class ImageWindow(QDialog):
 
         # список для хранения координат точек
         self.points = []
+        # список для хранения координат удалённых точек
+        self.removed_points = []
 
     # Обработка наведения мыши на изображение
     def eventFilter(self, obj, event):
@@ -364,7 +366,11 @@ class ImageWindow(QDialog):
             print("Click is outside of image.")
 
     # Добавление точки и обновление изображения (с учётом текущего масштаба)
-    def add_dot(self):
+    def add_dot(self, clear_removed_points=True):
+
+        if clear_removed_points: # только при добавлении новой точки (флаг)
+            self.removed_points.clear() # очистка истории удалённых точек
+
         pixmap_with_points = self.pixmap.copy()
         painter = QPainter(pixmap_with_points)
         painter.setPen(Qt.GlobalColor.red)
@@ -395,12 +401,31 @@ class ImageWindow(QDialog):
 
         if nearest_point:
             self.points.remove(nearest_point)
+            self.removed_points.append(nearest_point) # для возможности восстановления
             print(f"Removed dot: {nearest_point}")
-            self.add_dot()
+            self.add_dot(False) # False - перерисовка без очистки removed_points
         else:
             print("There isn't dot in the click area to removed.")
     
-    # Масштабирование с помощью клавиатуры
+    def remove_last_dot(self):
+        if self.points:
+            last_point = self.points.pop()  # Удаляем последнюю точку
+            self.removed_points.append(last_point)  # Добавляем её в стек удалённых
+            print(f"Removed last dot: {last_point}")
+            self.add_dot(False)  # False - перерисовка без очистки removed_points
+        else:
+            print("No dots to remove.")
+    
+    def restore_last_dot(self):
+        if self.removed_points:
+            last_removed = self.removed_points.pop()  # Берём последнюю удалённую точку
+            self.points.append(last_removed)  # Возвращаем её в основной список точек
+            print(f"Restored last removed dot: {last_removed}")
+            self.add_dot(False)  # False - перерисовка без очистки removed_points
+        else:
+            print("No dots to restore.")
+    
+    # Горячие клавиши: масштабирование, редактирование
     def keyPressEvent(self, event):
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             if event.key() == Qt.Key.Key_Equal or event.key() == Qt.Key.Key_Plus:  # Ctrl +
@@ -409,6 +434,10 @@ class ImageWindow(QDialog):
                 self.zoom_out()
             elif event.key() == Qt.Key.Key_0:  # Ctrl 0
                 self.reset_zoom()
+            elif event.key() == Qt.Key.Key_Z:  # Ctrl + Z
+                self.remove_last_dot()
+            elif event.key() == Qt.Key.Key_Y:  # Ctrl + Y
+                self.restore_last_dot()
     
     # Функции масштабирования
     def zoom_in(self):
