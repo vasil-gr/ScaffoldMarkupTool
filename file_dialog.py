@@ -115,7 +115,8 @@ class ImageWindow(QDialog):
         super().__init__()
         self.setWindowTitle("ScaffoldMarkupTool")
         self.setWindowIcon(QIcon("./icon2.png"))  
-        self.pixmap = QPixmap(file_path)
+        self.pixmap_original = QPixmap(file_path)
+        self.pixmap = self.pixmap_original.copy() # копия для применения масштабирования
         self.folder_path = os.path.dirname(file_path) # директория файла (понадобится при сохранении)
         self.file_name = os.path.splitext(os.path.basename(file_path))[0] # имя файла (понадобится при сохранении)
 
@@ -140,6 +141,11 @@ class ImageWindow(QDialog):
         self.image_label.setPixmap(self.pixmap)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scroll_area.setWidget(self.image_label) # если изображение больше окна, появятся полосы прокрутки.
+
+        # Поддержка масштабирования
+        self.scale_factor = 1.0
+        self.min_scale_factor = 0.2 # мин масштаб
+        self.max_scale_factor = 5.0 # макс масштаб 
 
         # Изменение цвета фона
         palette = QPalette()
@@ -195,9 +201,9 @@ class ImageWindow(QDialog):
 
         # Кнопка "Zoom" с выпадающим списком
         zoom_menu = QMenu("Zoom", self)
-        zoom_menu.addAction("Zoom In")
-        zoom_menu.addAction("Zoom Out")
-        # zoom_menu.addAction("Reset Zoom")
+        zoom_menu.addAction("Zoom In").triggered.connect(self.zoom_in)  
+        zoom_menu.addAction("Zoom Out").triggered.connect(self.zoom_out)
+        zoom_menu.addAction("Reset Zoom").triggered.connect(self.reset_zoom)
         # zoom_menu.addAction("Fit to Window")
 
         zoom_button = QPushButton("Zoom", self)
@@ -342,19 +348,22 @@ class ImageWindow(QDialog):
         
         # Координаты клика внутри self.image_label
         widget_pos = self.image_label.mapFromGlobal(event.globalPosition().toPoint())
+        # Учёт масштаба:
+        original_x = int(widget_pos.x() / self.scale_factor)
+        original_y = int(widget_pos.y() / self.scale_factor)
 
         # Проверяем, попал ли клик внутрь изображения
-        if 0 <= widget_pos.x() < self.pixmap.width() and 0 <= widget_pos.y() < self.pixmap.height():
+        if 0 <= original_x < self.pixmap_original.width() and 0 <= original_y < self.pixmap_original.height():
             if event.modifiers() == Qt.KeyboardModifier.ShiftModifier:  # удаление точки: клик+Shift
-                self.remove_dot(widget_pos)
+                self.remove_dot((original_x, original_y))
             else:  # добавление точки: клик
-                self.points.append((widget_pos.x(), widget_pos.y()))
-                print(f"Added dot: ({widget_pos.x()}, {widget_pos.y()})")
+                self.points.append((original_x, original_y))
+                print(f"Added dot: ({original_x}, {original_y})")
                 self.add_dot()
         else:
             print("Click is outside of image.")
 
-    # Добавление точки и обновление изображения
+    # Добавление точки и обновление изображения (с учётом текущего масштаба)
     def add_dot(self):
         pixmap_with_points = self.pixmap.copy()
         painter = QPainter(pixmap_with_points)
@@ -362,12 +371,16 @@ class ImageWindow(QDialog):
         painter.setBrush(Qt.GlobalColor.red)
 
         for point in self.points:
-            painter.drawEllipse(point[0] - 3, point[1] - 3, 6, 6)  # потом сделать возможность менять радиус и цвет точек
+            # Учёт масштаба
+            scaled_x = int(point[0] * self.scale_factor)
+            scaled_y = int(point[1] * self.scale_factor)
+            radius = int(3 * self.scale_factor)  # видимый радиус точек тоже меняется при изменении масштаба (реальный радиус = 3, потом сделать возможность менять радиус и цвет точек)
+            painter.drawEllipse(scaled_x - radius, scaled_y - radius, radius * 2, radius * 2)
 
         painter.end()
         self.image_label.setPixmap(pixmap_with_points)
     
-    # Удаление точки и обновление изображения
+    # Удаление точки и обновление изображения (с учётом масштаба)
     def remove_dot(self, click_pos):
         removal_radius = 10  # поиск точки для удаления производится в определённом радиусе вокруг точки нажатия; потом можно добавить возможность менять этот радиус
         nearest_point = None
@@ -375,7 +388,7 @@ class ImageWindow(QDialog):
 
         # удаляет ближайшую
         for point in self.points:
-            distance = ((point[0] - click_pos.x()) ** 2 + (point[1] - click_pos.y()) ** 2) ** 0.5
+            distance = ((point[0] - click_pos[0]) ** 2 + (point[1] - click_pos[1]) ** 2) ** 0.5
             if distance < removal_radius and distance < min_distance:
                 nearest_point = point
                 min_distance = distance
@@ -386,6 +399,38 @@ class ImageWindow(QDialog):
             self.add_dot()
         else:
             print("There isn't dot in the click area to removed.")
+    
+    # Масштабирование с помощью клавиатуры
+    def keyPressEvent(self, event):
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            if event.key() == Qt.Key.Key_Equal or event.key() == Qt.Key.Key_Plus:  # Ctrl +
+                self.zoom_in()
+            elif event.key() == Qt.Key.Key_Minus:  # Ctrl -
+                self.zoom_out()
+            elif event.key() == Qt.Key.Key_0:  # Ctrl 0
+                self.reset_zoom()
+    
+    # Функции масштабирования
+    def zoom_in(self):
+        if self.scale_factor < self.max_scale_factor:
+            self.scale_factor *= 1.1
+            self.update_zoom()
+    def zoom_out(self):
+        if self.scale_factor > self.min_scale_factor:
+            self.scale_factor /= 1.1
+            self.update_zoom()
+    def reset_zoom(self):
+        self.scale_factor = 1.0
+        self.update_zoom()
+
+    # Функция для отображения изменений при zoom
+    def update_zoom(self):
+        self.scale_factor = max(self.min_scale_factor, min(self.scale_factor, self.max_scale_factor)) # ограничиваем масштаб
+        self.pixmap = self.pixmap_original.scaled(self.pixmap_original.size() * self.scale_factor, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation) # масштабируем изображение
+        self.image_label.setPixmap(self.pixmap)
+        self.image_label.resize(self.pixmap.size()) # изменение QLabel
+        self.scroll_area.widget().adjustSize()  # изменение QScrollArea
+        self.add_dot() # перерисовка точек
 
     # Полноэкранный режим
     def toggle_fullscreen(self):
