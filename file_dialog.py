@@ -168,16 +168,16 @@ class ImageWindow(QDialog):
         save_menu = QMenu("Save", self)
 
         save_menu.addAction("Markup image (png)").triggered.connect(
-            lambda: save_res.save_markup_image(self.folder_path, self.file_name, self.pixmap, self.points)
+            lambda: save_res.save_markup_image(self.folder_path, self.file_name, self.pixmap_original, self.points)
         )
         save_menu.addAction("Markup only (png)").triggered.connect(
-            lambda: save_res.save_markup_only(self.folder_path, self.file_name, self.pixmap, self.points)
+            lambda: save_res.save_markup_only(self.folder_path, self.file_name, self.pixmap_original, self.points)
         )
         save_menu.addAction("Points (json)").triggered.connect(
-            lambda: save_res.save_points(self.folder_path, self.file_name, self.pixmap, self.points)
+            lambda: save_res.save_points(self.folder_path, self.file_name, self.pixmap_original, self.points)
         )
         save_menu.addAction("Project (zip)").triggered.connect(
-            lambda: save_res.save_project(self.folder_path, self.file_name, self.pixmap, self.points)
+            lambda: save_res.save_project(self.folder_path, self.file_name, self.pixmap_original, self.points)
         )
         file_menu.addMenu(save_menu)
         file_menu.addAction("Exit")

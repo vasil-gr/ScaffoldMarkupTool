@@ -18,7 +18,7 @@ def save_markup_image(folder_path, file_name, pixmap, points):
             file_path = os.path.splitext(file_path)[0] + '.png'
         
         if pixmap:
-            # копию изображения для отрисовки (в приницпе, отрисованное изображение уже создано, но так надёжнее)
+            # копия изображения для отрисовки (в приницпе, отрисованное изображение уже есть, но так надёжнее)
             pixmap_with_points = pixmap.copy()
             painter = QPainter(pixmap_with_points)
             painter.setPen(Qt.GlobalColor.red)
@@ -48,7 +48,7 @@ def save_markup_only(folder_path, file_name, pixmap, points):
         transparent_pixmap = QPixmap(pixmap.size()) # пустое изображение с прозрачным фоном
         transparent_pixmap.fill(Qt.GlobalColor.transparent)
 
-        # hисуем точки как в списке points
+        # рисуем точки как в списке points
         painter = QPainter(transparent_pixmap)
         painter.setPen(Qt.GlobalColor.red)
         painter.setBrush(Qt.GlobalColor.red)
