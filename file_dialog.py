@@ -168,7 +168,7 @@ class ImageWindow(QDialog):
         save_menu = QMenu("Save", self)
 
         save_menu.addAction("Markup image (png)").triggered.connect(
-            lambda: save_res.save_markup_image(self.folder_path, self.file_name, self.pixmap)
+            lambda: save_res.save_markup_image(self.folder_path, self.file_name, self.pixmap, self.points)
         )
         save_menu.addAction("Markup only (png)").triggered.connect(
             lambda: save_res.save_markup_only(self.folder_path, self.file_name, self.pixmap, self.points)
@@ -212,11 +212,23 @@ class ImageWindow(QDialog):
         zoom_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         toolbar.addWidget(zoom_button)
 
-        # Кнопка "Processing"
-        processing_button = QPushButton("Processing", self)
-        processing_button.setObjectName("Processing")
-        processing_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        toolbar.addWidget(processing_button)
+        
+        # Кнопка "Settings" с выпадающим списком
+        settings_menu = QMenu("Settings", self)
+        # подменю выбора размера точек
+        size_menu = QMenu("Size", self)
+        size_menu.addAction("Small (2px)").triggered.connect(lambda: self.set_point_size(2))
+        size_menu.addAction("Standard (3px)").triggered.connect(lambda: self.set_point_size(3))
+        size_menu.addAction("Large (5px)").triggered.connect(lambda: self.set_point_size(5))
+        self.point_radius = 3 # стартовый размер точек
+        settings_menu.addMenu(size_menu)
+
+        settings_button = QPushButton("Settings", self)
+        settings_button.setMenu(settings_menu)
+        settings_button.setObjectName("Settings")
+        settings_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        toolbar.addWidget(settings_button)
+
 
         main_layout.addWidget(toolbar)
         main_layout.addStretch()
@@ -252,7 +264,7 @@ class ImageWindow(QDialog):
         # Стили кнопок
         self.setStyleSheet("""
             /* Стили для кнопок в ToolBar */
-            QPushButton#File, QPushButton#Edit, QPushButton#Zoom, QPushButton#Processing {
+            QPushButton#File, QPushButton#Edit, QPushButton#Zoom, QPushButton#Settings {
                 background-color:rgb(255, 87, 51);
                 border-radius: 5px;
                 font-weight: 600;
@@ -267,13 +279,13 @@ class ImageWindow(QDialog):
                 text-align: center
             }
 
-            QPushButton#Edit QPushButton#Processing{
+            QPushButton#Edit QPushButton#Settings{
                 width: 120px;
                 color: white;
                 text-align: center
             }            
 
-            QPushButton#File:hover, QPushButton#Edit:hover, QPushButton#Zoom:hover, QPushButton#Processing:hover {
+            QPushButton#File:hover, QPushButton#Edit:hover, QPushButton#Zoom:hover, QPushButton#Settings:hover {
                 background-color:rgb(211, 73, 42);
             }
 
@@ -327,9 +339,9 @@ class ImageWindow(QDialog):
         # фильтр событий на QLabel
         self.image_label.installEventFilter(self)
 
-        # список для хранения координат точек
+        # список для хранения координат точек (+ размер, + цвет)
         self.points = []
-        # список для хранения координат удалённых точек
+        # список для хранения координат удалённых точек (+ размер, + цвет)
         self.removed_points = []
 
     # Обработка наведения мыши на изображение
@@ -359,8 +371,8 @@ class ImageWindow(QDialog):
             if event.modifiers() == Qt.KeyboardModifier.ShiftModifier:  # удаление точки: клик+Shift
                 self.remove_dot((original_x, original_y))
             else:  # добавление точки: клик
-                self.points.append((original_x, original_y))
-                print(f"Added dot: ({original_x}, {original_y})")
+                self.points.append(((original_x, original_y), self.point_radius))
+                print(f"Added dot: ({original_x}, {original_y}), size: {self.point_radius}px")
                 self.add_dot()
         else:
             print("Click is outside of image.")
@@ -376,16 +388,21 @@ class ImageWindow(QDialog):
         painter.setPen(Qt.GlobalColor.red)
         painter.setBrush(Qt.GlobalColor.red)
 
-        for point in self.points:
+        for point, size in self.points:
             # Учёт масштаба
             scaled_x = int(point[0] * self.scale_factor)
             scaled_y = int(point[1] * self.scale_factor)
-            radius = int(3 * self.scale_factor)  # видимый радиус точек тоже меняется при изменении масштаба (реальный радиус = 3, потом сделать возможность менять радиус и цвет точек)
+            radius = int(size * self.scale_factor)  # видимый радиус точек меняется при изменении масштаба (реальный радиус = выставленному в настройках)
             painter.drawEllipse(scaled_x - radius, scaled_y - radius, radius * 2, radius * 2)
 
         painter.end()
         self.image_label.setPixmap(pixmap_with_points)
     
+    # Изменение размера точек
+    def set_point_size(self, size):
+        self.point_radius = size
+        print(f"Point size set to: {size}px")
+
     # Удаление точки и обновление изображения (с учётом масштаба)
     def remove_dot(self, click_pos):
         removal_radius = 10  # поиск точки для удаления производится в определённом радиусе вокруг точки нажатия; потом можно добавить возможность менять этот радиус
@@ -476,51 +493,52 @@ class ImageWindow(QDialog):
     def open_project(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Open Project", "", "ZIP Files (*.zip)")
 
-        if file_path and file_path.lower().endswith('.zip'):
-            try:
-                temp_folder = os.path.join(os.path.dirname(file_path), "temp_project")
-                os.makedirs(temp_folder, exist_ok=True)
-
-                with zipfile.ZipFile(file_path, 'r') as zipf:
-                    zipf.extractall(temp_folder)
-
-                image_path = os.path.join(temp_folder, "image.png")
-                metadata_path = os.path.join(temp_folder, "metadata.json")
-
-                # проверка наличия файлов
-                if not os.path.exists(image_path) or not os.path.exists(metadata_path):
-                    print("Error: required files are missing in the project.")
-                    return
-
-                # выгрузка изображения
-                pixmap = QPixmap(image_path)
-
-                # выгрузка метаданных
-                with open(metadata_path, 'r', encoding='utf-8') as metafile:
-                    metadata = json.load(metafile)
-
-                points = [(point["x"], point["y"]) for point in metadata.get("points", [])]
-                file_name = os.path.splitext(os.path.basename(file_path))[0]
-
-                os.remove(image_path)
-                os.remove(metadata_path)
-                os.rmdir(temp_folder)
-
-                # новое окно с проектом
-                project_window = ImageWindow(file_path)
-                project_window.pixmap = pixmap
-                project_window.points = points
-                project_window.file_name = file_name
-                project_window.folder_path = os.path.dirname(file_path)
-                project_window.add_dot()  # перерисовка с точками
-                project_window.exec()
-
-                print(f"Project was loaded from: {file_path}")
-
-            except Exception as e:
-                print(f"Error opening project: {e}")
-        else:
+        if not file_path or not file_path.lower().endswith('.zip'):
             print("Project is not selected or incorrect file format.")
+            return
+
+        temp_folder = os.path.join(os.path.dirname(file_path), "temp_project")
+        os.makedirs(temp_folder, exist_ok=True)
+
+        try:
+            with zipfile.ZipFile(file_path, 'r') as zipf:
+                zipf.extractall(temp_folder)
+
+            image_path = os.path.join(temp_folder, "image.png")
+            metadata_path = os.path.join(temp_folder, "metadata.json")
+
+            if not os.path.exists(image_path) or not os.path.exists(metadata_path):
+                print("Error: required files are missing in the project.")
+                return
+
+            # загрузка данных
+            pixmap = QPixmap(image_path)
+            with open(metadata_path, 'r', encoding='utf-8') as metafile:
+                metadata = json.load(metafile)
+
+            points = [((point["x"], point["y"]), point.get("size", 3)) for point in metadata.get("points", [])]
+            file_name = os.path.splitext(os.path.basename(file_path))[0]
+
+            # Создаём новое окно с загруженными данными
+            project_window = ImageWindow(image_path)
+            project_window.pixmap = pixmap
+            project_window.image_label.setPixmap(pixmap)
+            project_window.points = points
+            project_window.file_name = file_name
+            project_window.folder_path = os.path.dirname(file_path)
+            project_window.add_dot()
+            project_window.exec()
+
+            print(f"Project was loaded from: {file_path}")
+
+        except Exception as e:
+            print(f"Error opening project: {e}")
+
+        # Удаляем временные файлы, если они были созданы
+        if os.path.exists(temp_folder):
+            for f in os.listdir(temp_folder):
+                os.remove(os.path.join(temp_folder, f))
+            os.rmdir(temp_folder)
 
     # Создание нового окна для дублированного изображения
     def duplicate_layer(self):

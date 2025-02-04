@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QFileDialog
 from PyQt6.QtCore import Qt
 
 # Обработчик сохранения размеченного изображения
-def save_markup_image(folder_path, file_name, pixmap):
+def save_markup_image(folder_path, file_name, pixmap, points):
     
     default_file_name = os.path.join(folder_path, f"{file_name}_img+mark") # путь с именем по умолчанию
     file_path, _ = QFileDialog.getSaveFileName(None, "Save Markup Image", default_file_name, "PNG Files (*.png)")
@@ -18,7 +18,17 @@ def save_markup_image(folder_path, file_name, pixmap):
             file_path = os.path.splitext(file_path)[0] + '.png'
         
         if pixmap:
-            pixmap.save(file_path, "PNG")  # Сохраняем изображение в PNG
+            # копию изображения для отрисовки (в приницпе, отрисованное изображение уже создано, но так надёжнее)
+            pixmap_with_points = pixmap.copy()
+            painter = QPainter(pixmap_with_points)
+            painter.setPen(Qt.GlobalColor.red)
+            painter.setBrush(Qt.GlobalColor.red)
+            # отрисовка
+            for (x, y), size in points:
+                painter.drawEllipse(x - size, y - size, size * 2, size * 2)
+            painter.end()
+
+            pixmap_with_points.save(file_path, "PNG")  # Сохраняем изображение в PNG
             print(f"Изображение сохранено в {file_path}")
         else:
             print("Нет изображения для сохранения.")
@@ -43,8 +53,8 @@ def save_markup_only(folder_path, file_name, pixmap, points):
         painter.setPen(Qt.GlobalColor.red)
         painter.setBrush(Qt.GlobalColor.red)
         
-        for point in points:
-            painter.drawEllipse(point[0] - 3, point[1] - 3, 6, 6)  # размер точек 3 пикс (можно сделать параметром)
+        for (x, y), size in points:  # Исправленный формат точек
+            painter.drawEllipse(x - size, y - size, size * 2, size * 2) 
 
         painter.end()
 
@@ -71,7 +81,7 @@ def save_points(folder_path, file_name, pixmap, points):
                 "width": pixmap.width(),
                 "height": pixmap.height()
             },
-            "points": [{"x": int(point[0]), "y": int(point[1])} for point in points],
+            "points": [{"x": int(x), "y": int(y), "size": size} for (x, y), size in points],
             "point_count": len(points),
             "scale": {
                 "unit": "nanometers",
@@ -102,7 +112,7 @@ def save_project(folder_path, file_name, pixmap, points):
                 "width": pixmap.width(),
                 "height": pixmap.height()
             },
-            "points": [{"x": int(point[0]), "y": int(point[1])} for point in points],
+            "points": [{"x": int(x), "y": int(y), "size": size} for (x, y), size in points],
             "point_count": len(points),
             "scale": {
                 "unit": "nanometers",
