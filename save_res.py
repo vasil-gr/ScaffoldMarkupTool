@@ -2,7 +2,7 @@ import os
 import json
 import zipfile
 from datetime import datetime
-from PyQt6.QtGui import QPainter, QPixmap
+from PyQt6.QtGui import QPainter, QPixmap, QColor
 from PyQt6.QtWidgets import QFileDialog
 from PyQt6.QtCore import Qt
 
@@ -21,10 +21,10 @@ def save_markup_image(folder_path, file_name, pixmap, points):
             # копия изображения для отрисовки (в приницпе, отрисованное изображение уже есть, но так надёжнее)
             pixmap_with_points = pixmap.copy()
             painter = QPainter(pixmap_with_points)
-            painter.setPen(Qt.GlobalColor.red)
-            painter.setBrush(Qt.GlobalColor.red)
             # отрисовка
-            for (x, y), size in points:
+            for (x, y), size, color in points:
+                painter.setPen(QColor(color))
+                painter.setBrush(QColor(color))
                 painter.drawEllipse(x - size, y - size, size * 2, size * 2)
             painter.end()
 
@@ -50,10 +50,10 @@ def save_markup_only(folder_path, file_name, pixmap, points):
 
         # рисуем точки как в списке points
         painter = QPainter(transparent_pixmap)
-        painter.setPen(Qt.GlobalColor.red)
-        painter.setBrush(Qt.GlobalColor.red)
         
-        for (x, y), size in points:  # Исправленный формат точек
+        for (x, y), size, color in points:
+            painter.setPen(QColor(color))
+            painter.setBrush(QColor(color))
             painter.drawEllipse(x - size, y - size, size * 2, size * 2) 
 
         painter.end()
@@ -81,7 +81,7 @@ def save_points(folder_path, file_name, pixmap, points):
                 "width": pixmap.width(),
                 "height": pixmap.height()
             },
-            "points": [{"x": int(x), "y": int(y), "size": size} for (x, y), size in points],
+            "points": [{"x": int(x), "y": int(y), "size": size, "color": QColor(color).name()} for (x, y), size, color in points],
             "point_count": len(points),
             "scale": {
                 "unit": "nanometers",
@@ -112,7 +112,7 @@ def save_project(folder_path, file_name, pixmap, points):
                 "width": pixmap.width(),
                 "height": pixmap.height()
             },
-            "points": [{"x": int(x), "y": int(y), "size": size} for (x, y), size in points],
+            "points": [{"x": int(x), "y": int(y), "size": size, "color": QColor(color).name()} for (x, y), size, color in points],
             "point_count": len(points),
             "scale": {
                 "unit": "nanometers",

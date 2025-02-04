@@ -161,12 +161,14 @@ class ImageWindow(QDialog):
         # Кнопка "File" с выпадающим списком
         file_menu = QMenu("File", self)
         file_menu.addAction("Open project").triggered.connect(self.open_project)
-        duplicate_action = QAction("Duplicate layer", self)
-        duplicate_action.triggered.connect(self.duplicate_layer)
-        file_menu.addAction(duplicate_action)
+
+        # Дублирование слоя - нужно?
+        # duplicate_action = QAction("Duplicate layer", self)
+        # duplicate_action.triggered.connect(self.duplicate_layer)
+        # file_menu.addAction(duplicate_action)
+
         # подменю сохранения
         save_menu = QMenu("Save", self)
-
         save_menu.addAction("Markup image (png)").triggered.connect(
             lambda: save_res.save_markup_image(self.folder_path, self.file_name, self.pixmap_original, self.points)
         )
@@ -180,7 +182,6 @@ class ImageWindow(QDialog):
             lambda: save_res.save_project(self.folder_path, self.file_name, self.pixmap_original, self.points)
         )
         file_menu.addMenu(save_menu)
-        file_menu.addAction("Exit")
 
         file_button = QPushButton("File", self)
         file_button.setMenu(file_menu)
@@ -222,6 +223,15 @@ class ImageWindow(QDialog):
         size_menu.addAction("Large (5px)").triggered.connect(lambda: self.set_point_size(5))
         self.point_radius = 3 # стартовый размер точек
         settings_menu.addMenu(size_menu)
+        # подменю выбора цвета точек
+        color_menu = QMenu("Color", self)
+        color_menu.addAction("Red").triggered.connect(lambda: self.set_point_color(QColor(Qt.GlobalColor.red)))
+        color_menu.addAction("Green").triggered.connect(lambda: self.set_point_color(QColor(Qt.GlobalColor.green)))
+        color_menu.addAction("Blue").triggered.connect(lambda: self.set_point_color(QColor(Qt.GlobalColor.blue)))
+        color_menu.addAction("Black").triggered.connect(lambda: self.set_point_color(QColor(Qt.GlobalColor.black)))
+        self.point_color = Qt.GlobalColor.red  # стартовый цвет точек
+        settings_menu.addMenu(color_menu)
+
 
         settings_button = QPushButton("Settings", self)
         settings_button.setMenu(settings_menu)
@@ -371,7 +381,7 @@ class ImageWindow(QDialog):
             if event.modifiers() == Qt.KeyboardModifier.ShiftModifier:  # удаление точки: клик+Shift
                 self.remove_dot((original_x, original_y))
             else:  # добавление точки: клик
-                self.points.append(((original_x, original_y), self.point_radius))
+                self.points.append(((original_x, original_y), self.point_radius, self.point_color))
                 print(f"Added dot: ({original_x}, {original_y}), size: {self.point_radius}px")
                 self.add_dot()
         else:
@@ -385,13 +395,13 @@ class ImageWindow(QDialog):
 
         pixmap_with_points = self.pixmap.copy()
         painter = QPainter(pixmap_with_points)
-        painter.setPen(Qt.GlobalColor.red)
-        painter.setBrush(Qt.GlobalColor.red)
 
-        for point, size in self.points:
+        for (x, y), size, color in self.points:
+            painter.setPen(color)
+            painter.setBrush(color)
             # Учёт масштаба
-            scaled_x = int(point[0] * self.scale_factor)
-            scaled_y = int(point[1] * self.scale_factor)
+            scaled_x = int(x * self.scale_factor)
+            scaled_y = int(y * self.scale_factor)
             radius = int(size * self.scale_factor)  # видимый радиус точек меняется при изменении масштаба (реальный радиус = выставленному в настройках)
             painter.drawEllipse(scaled_x - radius, scaled_y - radius, radius * 2, radius * 2)
 
@@ -402,16 +412,21 @@ class ImageWindow(QDialog):
     def set_point_size(self, size):
         self.point_radius = size
         print(f"Point size set to: {size}px")
+    
+    # Изменение цвета точек
+    def set_point_color(self, color):
+        self.point_color = QColor(color)
+        print(f"Point color set to: {self.point_color.name()}")
 
     # Удаление точки и обновление изображения (с учётом масштаба)
     def remove_dot(self, click_pos):
-        removal_radius = 10  # поиск точки для удаления производится в определённом радиусе вокруг точки нажатия; потом можно добавить возможность менять этот радиус
+        removal_radius = 10  # поиск точки для удаления производится в определённом радиусе вокруг точки нажатия
         nearest_point = None
         min_distance = float('inf')
 
         # удаляет ближайшую
         for point in self.points:
-            distance = ((point[0] - click_pos[0]) ** 2 + (point[1] - click_pos[1]) ** 2) ** 0.5
+            distance = ((point[0][0] - click_pos[0]) ** 2 + (point[0][1] - click_pos[1]) ** 2) ** 0.5
             if distance < removal_radius and distance < min_distance:
                 nearest_point = point
                 min_distance = distance
@@ -419,7 +434,7 @@ class ImageWindow(QDialog):
         if nearest_point:
             self.points.remove(nearest_point)
             self.removed_points.append(nearest_point) # для возможности восстановления
-            print(f"Removed dot: {nearest_point}")
+            print(f"Removed dot: {(nearest_point[0][0], nearest_point[0][1])}")
             self.add_dot(False) # False - перерисовка без очистки removed_points
         else:
             print("There isn't dot in the click area to removed.")
@@ -428,7 +443,7 @@ class ImageWindow(QDialog):
         if self.points:
             last_point = self.points.pop()  # Удаляем последнюю точку
             self.removed_points.append(last_point)  # Добавляем её в стек удалённых
-            print(f"Removed last dot: {last_point}")
+            print(f"Removed dot: {(last_point[0][0], last_point[0][1])}")
             self.add_dot(False)  # False - перерисовка без очистки removed_points
         else:
             print("No dots to remove.")
@@ -437,7 +452,7 @@ class ImageWindow(QDialog):
         if self.removed_points:
             last_removed = self.removed_points.pop()  # Берём последнюю удалённую точку
             self.points.append(last_removed)  # Возвращаем её в основной список точек
-            print(f"Restored last removed dot: {last_removed}")
+            print(f"Restored last removed dot: {(last_removed[0][0], last_removed[0][1])}")
             self.add_dot(False)  # False - перерисовка без очистки removed_points
         else:
             print("No dots to restore.")
@@ -516,7 +531,7 @@ class ImageWindow(QDialog):
             with open(metadata_path, 'r', encoding='utf-8') as metafile:
                 metadata = json.load(metafile)
 
-            points = [((point["x"], point["y"]), point.get("size", 3)) for point in metadata.get("points", [])]
+            points = [((point["x"], point["y"]), point.get("size", 3), QColor(point.get("color", "#ff0000"))) for point in metadata.get("points", [])]
             file_name = os.path.splitext(os.path.basename(file_path))[0]
 
             # Создаём новое окно с загруженными данными
@@ -540,10 +555,10 @@ class ImageWindow(QDialog):
                 os.remove(os.path.join(temp_folder, f))
             os.rmdir(temp_folder)
 
-    # Создание нового окна для дублированного изображения
-    def duplicate_layer(self):
-        duplicate_window = DuplicatedImageWindow(self.pixmap)
-        duplicate_window.exec()
+    # # Создание нового окна для дублированного изображения
+    # def duplicate_layer(self):
+    #     duplicate_window = DuplicatedImageWindow(self.pixmap)
+    #     duplicate_window.exec()
 
 class DuplicatedImageWindow(ImageWindow):
     def __init__(self, pixmap):
